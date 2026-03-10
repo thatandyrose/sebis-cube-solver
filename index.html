@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sebi's cube solver</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <h1>Sebi's cube solver</h1>
+        <p class="subtitle">you can do it Sebs, I ❤️ you</p>
+      </header>
+
+      <section class="step-switch">
+        <button id="setupStepBtn" class="step-btn active" type="button">1. Setup</button>
+        <button id="solveStepBtn" class="step-btn" type="button">2. Solve</button>
+      </section>
+
+      <section class="stage-wrap">
+        <div class="cube-stage" id="setupStage">
+          <p class="stage-label">Setup Cube</p>
+          <div class="cube" id="setupCube">
+            <div class="face face-u" data-face="U"></div>
+            <div class="face face-r" data-face="R"></div>
+            <div class="face face-f" data-face="F"></div>
+            <div class="face face-d" data-face="D"></div>
+            <div class="face face-l" data-face="L"></div>
+            <div class="face face-b" data-face="B"></div>
+          </div>
+        </div>
+        <div class="cube-stage hidden" id="solveStage">
+          <p class="stage-label">Solve Animation</p>
+          <div class="solve-cube" id="solveCube"></div>
+        </div>
+      </section>
+
+      <section class="controls" id="setupControls">
+        <div class="panel">
+          <h2>Paint</h2>
+          <div class="palette" id="palette"></div>
+          <div class="view-row">
+            <button id="viewLeftBtn" type="button" aria-label="Rotate left">←</button>
+            <button id="viewRightBtn" type="button" aria-label="Rotate right">→</button>
+            <button id="viewUpBtn" type="button" aria-label="Rotate up">↑</button>
+            <button id="viewDownBtn" type="button" aria-label="Rotate down">↓</button>
+          </div>
+          <div class="buttons">
+            <button id="solvedBtn" type="button">Reset Solved</button>
+            <button id="scrambleBtn" type="button">Scramble</button>
+            <button id="toSolveBtn" type="button">Go To Solve</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="controls hidden" id="solveControls">
+        <div class="panel">
+          <h2>Solve</h2>
+          <div class="buttons">
+            <button id="prevBtn" type="button" disabled>Prev</button>
+            <button id="nextBtn" type="button" disabled>Next</button>
+          </div>
+          <p class="status" id="status">Ready.</p>
+          <p class="status" id="moveHint">Solution loads automatically in this view.</p>
+          <ol class="steps" id="steps"></ol>
+          <div class="buttons">
+            <button id="toSetupBtn" type="button">Back To Setup</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
