@@ -41,12 +41,13 @@
           <h2>Paint</h2>
           <div class="palette" id="palette"></div>
           <div class="view-row">
-            <button id="viewLeftBtn" type="button" aria-label="Rotate left">←</button>
-            <button id="viewRightBtn" type="button" aria-label="Rotate right">→</button>
-            <button id="viewUpBtn" type="button" aria-label="Rotate up">↑</button>
-            <button id="viewDownBtn" type="button" aria-label="Rotate down">↓</button>
+            <button id="setupPrevFaceBtn" type="button">Prev Face</button>
+            <p class="stage-label" id="setupFaceLabel">Face: Front</p>
+            <button id="setupNextFaceBtn" type="button">Next Face</button>
           </div>
+          <p class="status" id="setupHint">Fill this face, then Next.</p>
           <div class="buttons">
+            <button id="resetNullBtn" type="button">Reset Null</button>
             <button id="solvedBtn" type="button">Reset Solved</button>
             <button id="scrambleBtn" type="button">Scramble</button>
             <button id="toSolveBtn" type="button">Go To Solve</button>
@@ -69,6 +70,15 @@
           </div>
         </div>
       </section>
+
+      <footer class="debug-footer">
+        <button id="toggleDebugBtn" class="debug-toggle" type="button">Show debug</button>
+        <div class="debug-head hidden" id="debugHead">
+          <strong>Debug Snapshot</strong>
+          <button id="copyDebugBtn" type="button">Copy</button>
+        </div>
+        <textarea id="debugOutput" class="hidden" readonly spellcheck="false"></textarea>
+      </footer>
     </main>
 
     <script src="./app.js"></script>

@@ -250,6 +250,12 @@ body {
   padding: 6px 10px;
 }
 
+#setupFaceLabel {
+  margin: 0;
+  min-width: 110px;
+  text-align: center;
+}
+
 button {
   border: 1px solid color-mix(in oklab, var(--line), transparent 18%);
   background: color-mix(in oklab, var(--panel), white 10%);
@@ -280,5 +286,50 @@ button:disabled {
 .steps li.active {
   color: var(--accent);
   font-weight: 700;
+}
+
+.debug-footer {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--panel), transparent 8%);
+  border: 1px solid color-mix(in oklab, var(--line), transparent 20%);
+}
+
+.debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.debug-head.hidden {
+  display: none;
+}
+
+.debug-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 2px 0 8px;
+  border-radius: 0;
+}
+
+#debugOutput {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--line), transparent 10%);
+  background: color-mix(in oklab, var(--panel), black 5%);
+  color: var(--text);
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+}
+
+#debugOutput.hidden {
+  display: none;
 }
 

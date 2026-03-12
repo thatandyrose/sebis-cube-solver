@@ -9,6 +9,7 @@ const FACE_COLORS = {
 };
 
 const COLOR_HEX = {
+  N: "#98a39d",
   W: "#f3f5ef",
   Y: "#f2d26c",
   G: "#79b795",
@@ -18,6 +19,7 @@ const COLOR_HEX = {
 };
 
 const COLOR_NAME = {
+  N: "None",
   W: "White",
   Y: "Yellow",
   G: "Green",
@@ -33,6 +35,7 @@ const faceContainers = {};
 const stickerElements = new Map();
 
 const paletteEl = document.getElementById("palette");
+const resetNullBtn = document.getElementById("resetNullBtn");
 const solvedBtn = document.getElementById("solvedBtn");
 const scrambleBtn = document.getElementById("scrambleBtn");
 const prevBtn = document.getElementById("prevBtn");
@@ -42,10 +45,10 @@ const moveHintEl = document.getElementById("moveHint");
 const stepsEl = document.getElementById("steps");
 const setupCubeEl = document.getElementById("setupCube");
 const solveCubeEl = document.getElementById("solveCube");
-const viewUpBtn = document.getElementById("viewUpBtn");
-const viewLeftBtn = document.getElementById("viewLeftBtn");
-const viewRightBtn = document.getElementById("viewRightBtn");
-const viewDownBtn = document.getElementById("viewDownBtn");
+const setupPrevFaceBtn = document.getElementById("setupPrevFaceBtn");
+const setupNextFaceBtn = document.getElementById("setupNextFaceBtn");
+const setupFaceLabelEl = document.getElementById("setupFaceLabel");
+const setupHintEl = document.getElementById("setupHint");
 const setupStepBtn = document.getElementById("setupStepBtn");
 const solveStepBtn = document.getElementById("solveStepBtn");
 const toSolveBtn = document.getElementById("toSolveBtn");
@@ -54,6 +57,10 @@ const setupStageEl = document.getElementById("setupStage");
 const solveStageEl = document.getElementById("solveStage");
 const setupControlsEl = document.getElementById("setupControls");
 const solveControlsEl = document.getElementById("solveControls");
+const toggleDebugBtn = document.getElementById("toggleDebugBtn");
+const debugHeadEl = document.getElementById("debugHead");
+const copyDebugBtn = document.getElementById("copyDebugBtn");
+const debugOutputEl = document.getElementById("debugOutput");
 
 let selectedColor = "W";
 let cubeState = "";
@@ -67,10 +74,22 @@ let solutionStartState = "";
 let stepIndex = 0;
 let isAnimatingStep = false;
 let isAutoPreparing = false;
-let cameraXDeg = -24;
-let cameraYDeg = -34;
 let solveViewState = "";
 let currentStep = "setup";
+let currentSetupFaceIndex = 0;
+let isDebugVisible = false;
+
+const SETUP_FACES = ["F", "R", "B", "L", "U", "D"];
+const SETUP_FACE_LABEL = { F: "Front", R: "Right", B: "Back", L: "Left", U: "Top", D: "Bottom" };
+const SETUP_VIEW_TRANSFORMS = {
+  F: "rotateX(-15deg) rotateY(0deg)",
+  R: "rotateX(-15deg) rotateY(-90deg)",
+  B: "rotateX(-15deg) rotateY(-180deg)",
+  L: "rotateX(-15deg) rotateY(-270deg)",
+  U: "rotateX(-90deg) rotateY(0deg)",
+  D: "rotateX(90deg) rotateY(0deg)",
+};
+const SOLVE_VIEW_TRANSFORM = "rotateX(-24deg) rotateY(-34deg)";
 
 function stickerDefs() {
   const defs = [];
@@ -263,7 +282,7 @@ function invertSequence(seq) {
 
 function initSolvedState() {
   solvedState = STICKERS.map((s) => FACE_COLORS[s.face]).join("");
-  cubeState = solvedState;
+  cubeState = STICKERS.map(() => "N").join("");
 }
 
 function initCubeUI() {
@@ -282,6 +301,10 @@ function initCubeUI() {
         cubeState = chars.join("");
         clearSolution();
         renderCube();
+        renderSetupFaceView();
+        if (!faceHasNull(currentSetupFace())) {
+          setSetupHint("Face complete. Press Next.");
+        }
       });
       stickerElements.set(idx, sticker);
       el.appendChild(sticker);
@@ -290,7 +313,7 @@ function initCubeUI() {
 }
 
 function initPalette() {
-  const order = ["W", "Y", "G", "B", "R", "O"];
+  const order = ["N", "W", "Y", "G", "B", "R", "O"];
   for (const c of order) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -319,6 +342,7 @@ function renderCube() {
     sticker.style.background = COLOR_HEX[cubeState[i]];
     sticker.title = `${COLOR_NAME[cubeState[i]]} sticker`;
   }
+  updateDebugPanel();
 }
 
 function cubieStickersForState(state, cx, cy, cz) {
@@ -376,13 +400,74 @@ function setMoveHint(text) {
   moveHintEl.textContent = text;
 }
 
-function applyView() {
-  const transform = `rotateX(${cameraXDeg}deg) rotateY(${cameraYDeg}deg)`;
-  setupCubeEl.style.setProperty("--cube-transform", transform);
-  solveCubeEl.style.setProperty("--cube-transform", transform);
+function setSetupHint(text) {
+  setupHintEl.textContent = text;
+}
+
+function currentSetupFace() {
+  return SETUP_FACES[currentSetupFaceIndex];
+}
+
+function renderSetupFaceView() {
+  const face = currentSetupFace();
+  setupCubeEl.style.setProperty("--cube-transform", SETUP_VIEW_TRANSFORMS[face]);
+  solveCubeEl.style.setProperty("--cube-transform", SOLVE_VIEW_TRANSFORM);
+  setupFaceLabelEl.textContent = `Face: ${SETUP_FACE_LABEL[face]}`;
+  setupPrevFaceBtn.disabled = currentSetupFaceIndex <= 0;
+  setupNextFaceBtn.disabled = faceHasNull(face);
+}
+
+function faceHasNull(face) {
+  return FACE_TO_INDICES[face].some((idx) => cubeState[idx] === "N");
+}
+
+function nextIncompleteFaceIndex(startIdx) {
+  for (let i = startIdx + 1; i < SETUP_FACES.length; i += 1) {
+    if (faceHasNull(SETUP_FACES[i])) return i;
+  }
+  for (let i = 0; i < startIdx; i += 1) {
+    if (faceHasNull(SETUP_FACES[i])) return i;
+  }
+  return -1;
+}
+
+function cubeHasNulls() {
+  return cubeState.includes("N");
+}
+
+function goToNextSetupFace() {
+  const face = currentSetupFace();
+  if (faceHasNull(face)) {
+    setSetupHint("This face still has grey stickers. Fill all 4 before Next.");
+    return;
+  }
+
+  const nextIdx = nextIncompleteFaceIndex(currentSetupFaceIndex);
+  if (nextIdx === -1) {
+    setSetupHint("All faces complete. You can Go To Solve.");
+    return;
+  }
+  currentSetupFaceIndex = nextIdx;
+  renderSetupFaceView();
+  setSetupHint("Good. Fill this face, then Next.");
 }
 
 function setStep(step) {
+  if (step === "solve" && cubeHasNulls()) {
+    currentStep = "setup";
+    setupStageEl.classList.remove("hidden");
+    setupControlsEl.classList.remove("hidden");
+    solveStageEl.classList.add("hidden");
+    solveControlsEl.classList.add("hidden");
+    setupStepBtn.classList.add("active");
+    solveStepBtn.classList.remove("active");
+    renderSetupFaceView();
+    setSetupHint("Finish setup first: no grey stickers allowed before Solve.");
+    setStatus("Complete all faces before entering solve mode.");
+    updateDebugPanel();
+    return;
+  }
+
   currentStep = step;
   const showSetup = step === "setup";
   setupStageEl.classList.toggle("hidden", !showSetup);
@@ -393,6 +478,7 @@ function setStep(step) {
   solveStepBtn.classList.toggle("active", !showSetup);
 
   if (!showSetup) {
+    logSolveEntrySnapshot();
     if (!solutionMoves.length) {
       solveViewState = cubeState;
       renderSolveCube(solveViewState);
@@ -400,16 +486,7 @@ function setStep(step) {
     setStatus(solutionMoves.length ? statusEl.textContent : "Ready to solve this setup.");
     ensureSolvePrepared();
   }
-}
-
-function rotateHorizontal(direction) {
-  cameraYDeg += direction * 90;
-  applyView();
-}
-
-function rotateVertical(direction) {
-  cameraXDeg += direction * 90;
-  applyView();
+  updateDebugPanel();
 }
 
 function clearSolution() {
@@ -420,6 +497,7 @@ function clearSolution() {
   renderSolveCube(solveViewState);
   setMoveHint("Solution loads automatically in this view.");
   updateStepUI();
+  updateDebugPanel();
 }
 
 function randomScramble(len = 14) {
@@ -443,11 +521,48 @@ function validateColorCounts(state) {
 }
 
 function countColors(state) {
-  const counts = { W: 0, Y: 0, G: 0, B: 0, R: 0, O: 0 };
+  const counts = { N: 0, W: 0, Y: 0, G: 0, B: 0, R: 0, O: 0 };
   for (const ch of state) {
     if (ch in counts) counts[ch] += 1;
   }
   return counts;
+}
+
+function faceStateMap(state) {
+  const out = {};
+  for (const face of FACE_ORDER) {
+    out[face] = FACE_TO_INDICES[face].map((idx) => state[idx]).join("");
+  }
+  return out;
+}
+
+function buildDebugSnapshot() {
+  return {
+    step: currentStep,
+    setupFace: SETUP_FACE_LABEL[currentSetupFace()] || null,
+    raw: cubeState,
+    faces: faceStateMap(cubeState),
+    counts: countColors(cubeState),
+    hasNulls: cubeHasNulls(),
+  };
+}
+
+function updateDebugPanel() {
+  if (!debugOutputEl) return;
+  debugOutputEl.value = JSON.stringify(buildDebugSnapshot(), null, 2);
+}
+
+function setDebugVisible(visible) {
+  isDebugVisible = visible;
+  debugHeadEl.classList.toggle("hidden", !visible);
+  debugOutputEl.classList.toggle("hidden", !visible);
+  toggleDebugBtn.textContent = visible ? "Hide debug" : "Show debug";
+}
+
+function logSolveEntrySnapshot() {
+  const snapshot = buildDebugSnapshot();
+  console.log("[Sebi cube solver] solve entry snapshot", snapshot);
+  updateDebugPanel();
 }
 
 async function buildGoalTableIfNeeded() {
@@ -483,11 +598,17 @@ async function buildGoalTableIfNeeded() {
 }
 
 async function solveCurrentState() {
+  if (cubeHasNulls()) {
+    setStatus("Cannot solve yet. Fill every grey sticker first.");
+    return;
+  }
+
   if (!validateColorCounts(cubeState)) {
     const counts = countColors(cubeState);
     setStatus(
       `Need exactly 4 of each color. Current counts: W${counts.W} Y${counts.Y} G${counts.G} B${counts.B} R${counts.R} O${counts.O}.`
     );
+    logSolveEntrySnapshot();
     return;
   }
 
@@ -541,6 +662,7 @@ async function solveCurrentState() {
 
   clearSolution();
   setStatus("No legal solution found. Check color layout.");
+  logSolveEntrySnapshot();
 }
 
 function prepareStepPlayback() {
@@ -699,16 +821,44 @@ function bindEvents() {
   toSetupBtn.addEventListener("click", () => {
     setStep("setup");
   });
+  toggleDebugBtn.addEventListener("click", () => {
+    setDebugVisible(!isDebugVisible);
+  });
+  copyDebugBtn.addEventListener("click", async () => {
+    const text = debugOutputEl.value;
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("Debug snapshot copied.");
+    } catch {
+      debugOutputEl.focus();
+      debugOutputEl.select();
+      setStatus("Select-all ready. Copy manually.");
+    }
+  });
+  setupPrevFaceBtn.addEventListener("click", () => {
+    if (currentSetupFaceIndex <= 0) return;
+    currentSetupFaceIndex -= 1;
+    renderSetupFaceView();
+    setSetupHint("Moved to previous face.");
+  });
+  setupNextFaceBtn.addEventListener("click", goToNextSetupFace);
 
-  viewLeftBtn.addEventListener("click", () => rotateHorizontal(-1));
-  viewRightBtn.addEventListener("click", () => rotateHorizontal(1));
-  viewUpBtn.addEventListener("click", () => rotateVertical(1));
-  viewDownBtn.addEventListener("click", () => rotateVertical(-1));
+  resetNullBtn.addEventListener("click", () => {
+    cubeState = STICKERS.map(() => "N").join("");
+    currentSetupFaceIndex = 0;
+    clearSolution();
+    renderCube();
+    renderSetupFaceView();
+    setSetupHint("Reset to grey. Fill this face, then Next.");
+    setStatus("Cube reset to null.");
+  });
 
   solvedBtn.addEventListener("click", () => {
     cubeState = solvedState;
     clearSolution();
     renderCube();
+    renderSetupFaceView();
+    setSetupHint("Cube is fully colored. You can Go To Solve.");
     setStatus("Reset to solved cube.");
   });
 
@@ -717,6 +867,8 @@ function bindEvents() {
     cubeState = applyMoves(solvedState, moves);
     clearSolution();
     renderCube();
+    renderSetupFaceView();
+    setSetupHint("Scramble is fully colored. You can Go To Solve.");
     setStatus(`Scramble: ${moves.join(" ")}`);
   });
 
@@ -734,12 +886,15 @@ function init() {
   solveViewState = cubeState;
   initCubeUI();
   initPalette();
-  applyView();
+  renderSetupFaceView();
   bindEvents();
   renderCube();
   renderSolveCube(solveViewState);
   setStep(currentStep);
+  setSetupHint("Fill this face, then Next.");
   setStatus("Ready.");
+  setDebugVisible(false);
+  updateDebugPanel();
 }
 
 init();
