@@ -53,17 +53,6 @@ body {
   color: var(--muted);
 }
 
-.step-switch {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.step-btn.active {
-  border-color: color-mix(in oklab, var(--accent), transparent 30%);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 70%);
-}
-
 .stage-wrap {
   margin: 20px 0;
   padding: 26px;
@@ -108,6 +97,19 @@ body {
   transition: transform 420ms ease;
   width: 180px;
   height: 180px;
+}
+
+.cube-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 96px;
+  height: 96px;
+  margin-left: -48px;
+  margin-top: -48px;
+  background: color-mix(in oklab, var(--panel), black 52%);
+  border-radius: 10px;
+  transform-style: preserve-3d;
 }
 
 .cubie {

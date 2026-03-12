@@ -29,7 +29,10 @@ const COLOR_NAME = {
 };
 
 const SOLVER_MOVES = ["U", "U'", "U2", "R", "R'", "R2", "F", "F'", "F2"];
-const MAX_HALF_DEPTH = 7;
+const FAST_HALF_DEPTH = 7;
+const DEEP_HALF_DEPTH = 8;
+const ITERATIVE_MAX_FORWARD_DEPTH = 10;
+const ITERATIVE_TIME_LIMIT_MS = 2500;
 
 const faceContainers = {};
 const stickerElements = new Map();
@@ -49,8 +52,6 @@ const setupPrevFaceBtn = document.getElementById("setupPrevFaceBtn");
 const setupNextFaceBtn = document.getElementById("setupNextFaceBtn");
 const setupFaceLabelEl = document.getElementById("setupFaceLabel");
 const setupHintEl = document.getElementById("setupHint");
-const setupStepBtn = document.getElementById("setupStepBtn");
-const solveStepBtn = document.getElementById("solveStepBtn");
 const toSolveBtn = document.getElementById("toSolveBtn");
 const toSetupBtn = document.getElementById("toSetupBtn");
 const setupStageEl = document.getElementById("setupStage");
@@ -68,6 +69,8 @@ let solvedState = "";
 
 let goalTable = null;
 let goalTableReady = false;
+let goalTableDepth = 0;
+let goalFrontier = [];
 
 let solutionMoves = [];
 let solutionStartState = "";
@@ -89,7 +92,7 @@ const SETUP_VIEW_TRANSFORMS = {
   U: "rotateX(-90deg) rotateY(0deg)",
   D: "rotateX(90deg) rotateY(0deg)",
 };
-const SOLVE_VIEW_TRANSFORM = "rotateX(-24deg) rotateY(-34deg)";
+const SOLVE_VIEW_TRANSFORM = "rotateX(-30deg) rotateY(0deg)";
 
 function stickerDefs() {
   const defs = [];
@@ -342,6 +345,7 @@ function renderCube() {
     sticker.style.background = COLOR_HEX[cubeState[i]];
     sticker.title = `${COLOR_NAME[cubeState[i]]} sticker`;
   }
+  updateSetupButtons();
   updateDebugPanel();
 }
 
@@ -366,11 +370,15 @@ function stickerTransform(nx, ny, nz) {
 }
 
 function cubieTransform(x, y, z) {
-  return `translate3d(${x * 30}px, ${-y * 30}px, ${z * 30}px)`;
+  return `translate3d(${x * 25}px, ${-y * 25}px, ${z * 25}px)`;
 }
 
 function renderSolveCube(state) {
   solveCubeEl.innerHTML = "";
+  const coreEl = document.createElement("div");
+  coreEl.className = "cube-core";
+  solveCubeEl.appendChild(coreEl);
+
   for (const coord of CUBIE_COORDS) {
     const cubieEl = document.createElement("div");
     cubieEl.className = "cubie";
@@ -435,6 +443,20 @@ function cubeHasNulls() {
   return cubeState.includes("N");
 }
 
+function cubeHasAnyColor() {
+  return cubeState.includes("W")
+    || cubeState.includes("Y")
+    || cubeState.includes("G")
+    || cubeState.includes("B")
+    || cubeState.includes("R")
+    || cubeState.includes("O");
+}
+
+function updateSetupButtons() {
+  resetNullBtn.disabled = !cubeHasAnyColor();
+  toSolveBtn.disabled = cubeHasNulls();
+}
+
 function goToNextSetupFace() {
   const face = currentSetupFace();
   if (faceHasNull(face)) {
@@ -459,11 +481,10 @@ function setStep(step) {
     setupControlsEl.classList.remove("hidden");
     solveStageEl.classList.add("hidden");
     solveControlsEl.classList.add("hidden");
-    setupStepBtn.classList.add("active");
-    solveStepBtn.classList.remove("active");
     renderSetupFaceView();
     setSetupHint("Finish setup first: no grey stickers allowed before Solve.");
     setStatus("Complete all faces before entering solve mode.");
+    updateSetupButtons();
     updateDebugPanel();
     return;
   }
@@ -474,8 +495,6 @@ function setStep(step) {
   setupControlsEl.classList.toggle("hidden", !showSetup);
   solveStageEl.classList.toggle("hidden", showSetup);
   solveControlsEl.classList.toggle("hidden", showSetup);
-  setupStepBtn.classList.toggle("active", showSetup);
-  solveStepBtn.classList.toggle("active", !showSetup);
 
   if (!showSetup) {
     logSolveEntrySnapshot();
@@ -486,6 +505,7 @@ function setStep(step) {
     setStatus(solutionMoves.length ? statusEl.textContent : "Ready to solve this setup.");
     ensureSolvePrepared();
   }
+  updateSetupButtons();
   updateDebugPanel();
 }
 
@@ -565,36 +585,86 @@ function logSolveEntrySnapshot() {
   updateDebugPanel();
 }
 
-async function buildGoalTableIfNeeded() {
-  if (goalTableReady) return;
-  setStatus("Building solver table...");
+async function buildGoalTableToDepth(targetDepth) {
+  if (!goalTable) {
+    goalTable = new Map();
+    goalTable.set(solvedState, []);
+    goalFrontier = [{ state: solvedState, path: [], lastFace: "" }];
+    goalTableDepth = 0;
+    goalTableReady = true;
+  }
+  if (goalTableDepth >= targetDepth) return;
 
-  const table = new Map();
-  table.set(solvedState, []);
-  let frontier = [{ state: solvedState, path: [], lastFace: "" }];
+  setStatus(
+    goalTableDepth === 0
+      ? `Building solver table (depth ${targetDepth})...`
+      : `Extending solver table to depth ${targetDepth}...`
+  );
 
-  for (let depth = 0; depth < MAX_HALF_DEPTH; depth += 1) {
+  for (let depth = goalTableDepth; depth < targetDepth; depth += 1) {
     const nextFrontier = [];
-    for (const node of frontier) {
+    for (const node of goalFrontier) {
       for (const move of SOLVER_MOVES) {
         if (node.lastFace && node.lastFace === move[0]) continue;
         const nextState = applyMove(node.state, move);
-        if (table.has(nextState)) continue;
+        if (goalTable.has(nextState)) continue;
         const nextPath = node.path.concat(move);
-        table.set(nextState, nextPath);
+        goalTable.set(nextState, nextPath);
         nextFrontier.push({ state: nextState, path: nextPath, lastFace: move[0] });
       }
     }
-    frontier = nextFrontier;
+    goalFrontier = nextFrontier;
+    goalTableDepth = depth + 1;
 
     // Yield between depths so UI stays responsive.
     // eslint-disable-next-line no-await-in-loop
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  goalTable = table;
-  goalTableReady = true;
-  setStatus("Solver table ready.");
+  setStatus(`Solver table ready (depth ${goalTableDepth}).`);
+}
+
+async function searchFromState(startState, maxForwardDepth, statusLabel, timeLimitMs = 0) {
+  const startedAt = Date.now();
+  const visited = new Set([startState]);
+  let frontier = [{ state: startState, path: [], lastFace: "" }];
+
+  for (let depth = 0; depth <= maxForwardDepth; depth += 1) {
+    if (statusLabel) {
+      setStatus(`${statusLabel} depth ${depth}/${maxForwardDepth}...`);
+    }
+    const nextFrontier = [];
+    for (const node of frontier) {
+      const endPath = goalTable.get(node.state);
+      if (endPath) {
+        return { moves: node.path.concat(invertSequence(endPath)), timedOut: false };
+      }
+
+      if (depth === maxForwardDepth) continue;
+      for (const move of SOLVER_MOVES) {
+        if (node.lastFace && node.lastFace === move[0]) continue;
+        const nextState = applyMove(node.state, move);
+        if (visited.has(nextState)) continue;
+        visited.add(nextState);
+        nextFrontier.push({
+          state: nextState,
+          path: node.path.concat(move),
+          lastFace: move[0],
+        });
+      }
+    }
+    frontier = nextFrontier;
+
+    if (timeLimitMs > 0 && Date.now() - startedAt >= timeLimitMs) {
+      return { moves: null, timedOut: true };
+    }
+
+    // Yield between depths so UI stays responsive.
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  return { moves: null, timedOut: false };
 }
 
 async function solveCurrentState() {
@@ -612,7 +682,7 @@ async function solveCurrentState() {
     return;
   }
 
-  await buildGoalTableIfNeeded();
+  await buildGoalTableToDepth(FAST_HALF_DEPTH);
 
   if (cubeState === solvedState) {
     clearSolution();
@@ -622,51 +692,64 @@ async function solveCurrentState() {
 
   if (goalTable.has(cubeState)) {
     solutionMoves = invertSequence(goalTable.get(cubeState));
-    prepareStepPlayback();
+    prepareStepPlayback(cubeState);
     setStatus(`Solved in ${solutionMoves.length} move${solutionMoves.length === 1 ? "" : "s"}.`);
     return;
   }
 
-  setStatus("Searching for solution...");
-  const visited = new Set([cubeState]);
-  let frontier = [{ state: cubeState, path: [], lastFace: "" }];
+  const fastResult = await searchFromState(cubeState, FAST_HALF_DEPTH, "Searching (fast)");
+  if (fastResult.moves) {
+    solutionMoves = fastResult.moves;
+    prepareStepPlayback(cubeState);
+    setStatus(`Solved in ${solutionMoves.length} move${solutionMoves.length === 1 ? "" : "s"} (fast).`);
+    return;
+  }
 
-  for (let depth = 0; depth <= MAX_HALF_DEPTH; depth += 1) {
-    const nextFrontier = [];
-    for (const node of frontier) {
-      const endPath = goalTable.get(node.state);
-      if (endPath) {
-        solutionMoves = node.path.concat(invertSequence(endPath));
-        prepareStepPlayback();
-        setStatus(`Solved in ${solutionMoves.length} move${solutionMoves.length === 1 ? "" : "s"}.`);
-        return;
-      }
+  await buildGoalTableToDepth(DEEP_HALF_DEPTH);
+  if (goalTable.has(cubeState)) {
+    solutionMoves = invertSequence(goalTable.get(cubeState));
+    prepareStepPlayback(cubeState);
+    setStatus(`Solved in ${solutionMoves.length} move${solutionMoves.length === 1 ? "" : "s"} (deeper table).`);
+    return;
+  }
 
-      if (depth === MAX_HALF_DEPTH) continue;
-      for (const move of SOLVER_MOVES) {
-        if (node.lastFace && node.lastFace === move[0]) continue;
-        const nextState = applyMove(node.state, move);
-        if (visited.has(nextState)) continue;
-        visited.add(nextState);
-        nextFrontier.push({
-          state: nextState,
-          path: node.path.concat(move),
-          lastFace: move[0],
-        });
-      }
+  const deepResult = await searchFromState(cubeState, DEEP_HALF_DEPTH, "Searching (deeper)");
+  if (deepResult.moves) {
+    solutionMoves = deepResult.moves;
+    prepareStepPlayback(cubeState);
+    setStatus(`Solved in ${solutionMoves.length} move${solutionMoves.length === 1 ? "" : "s"} (deeper search).`);
+    return;
+  }
+
+  const iterativeStart = Date.now();
+  for (let depth = DEEP_HALF_DEPTH + 1; depth <= ITERATIVE_MAX_FORWARD_DEPTH; depth += 1) {
+    const elapsed = Date.now() - iterativeStart;
+    const remaining = ITERATIVE_TIME_LIMIT_MS - elapsed;
+    if (remaining <= 0) break;
+    const iterativeResult = await searchFromState(
+      cubeState,
+      depth,
+      "Searching (iterative fallback)",
+      remaining
+    );
+    if (iterativeResult.moves) {
+      solutionMoves = iterativeResult.moves;
+      prepareStepPlayback(cubeState);
+      setStatus(
+        `Solved in ${solutionMoves.length} move${solutionMoves.length === 1 ? "" : "s"} (iterative depth ${depth}).`
+      );
+      return;
     }
-    frontier = nextFrontier;
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (iterativeResult.timedOut) break;
   }
 
   clearSolution();
-  setStatus("No legal solution found. Check color layout.");
+  setStatus("No solution found in current depth/time limits. Verify manual sticker layout.");
   logSolveEntrySnapshot();
 }
 
-function prepareStepPlayback() {
-  solutionStartState = cubeState;
+function prepareStepPlayback(startState = cubeState) {
+  solutionStartState = startState;
   solveViewState = solutionStartState;
   stepIndex = 0;
   renderSolveCube(solveViewState);
@@ -813,10 +896,6 @@ async function ensureSolvePrepared() {
 }
 
 function bindEvents() {
-  setupStepBtn.addEventListener("click", () => {
-    setStep("setup");
-  });
-  solveStepBtn.addEventListener("click", () => setStep("solve"));
   toSolveBtn.addEventListener("click", () => setStep("solve"));
   toSetupBtn.addEventListener("click", () => {
     setStep("setup");
@@ -893,6 +972,7 @@ function init() {
   setStep(currentStep);
   setSetupHint("Fill this face, then Next.");
   setStatus("Ready.");
+  updateSetupButtons();
   setDebugVisible(false);
   updateDebugPanel();
 }
